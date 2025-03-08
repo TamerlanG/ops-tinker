@@ -42,11 +42,8 @@ export async function GET(request: Request) {
       deployments: deployments.map(deployment => ({
         name: deployment.metadata?.name,
         namespace: deployment.metadata?.namespace,
-        replicas: {
-          desired: deployment.spec?.replicas,
-          available: deployment.status?.availableReplicas,
-          ready: deployment.status?.readyReplicas,
-        },
+        replicas: `${deployment.status?.availableReplicas || 0}/${deployment.spec?.replicas || 0}`,
+        status: deployment.status?.availableReplicas === deployment.spec?.replicas ? 'Healthy' : 'Unhealthy',
         strategy: deployment.spec?.strategy?.type,
         age: deployment.metadata?.creationTimestamp,
       })),
