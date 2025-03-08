@@ -1,149 +1,203 @@
+'use client';
+
+import { useEffect, useState } from "react";
+import { Suspense } from "react";
+import { InfrastructureClient } from "./components/infrastructure-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
+import { NamespaceSelector } from "@/components/NamespaceSelector";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ClusterOverview } from "./components/ClusterOverview";
+import { ServicesList } from "./components/ServicesList";
+import { ResourceOverview } from "./components/ResourceOverview";
+import { Toaster } from "sonner";
 
-// Mock data
-const clusters = [
-  {
-    name: "prod-cluster-1",
-    status: "Healthy",
-    cpu: 78,
-    memory: 82,
-    pods: 45,
-    nodes: 5,
-  },
-  {
-    name: "staging-cluster-1",
-    status: "Warning",
-    cpu: 45,
-    memory: 92,
-    pods: 28,
-    nodes: 3,
-  },
-];
+function LoadingCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-center">
+          <div className="h-7 w-48 bg-muted animate-pulse rounded"></div>
+          <div className="h-6 w-20 bg-muted animate-pulse rounded-full"></div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+              <div className="h-4 w-12 bg-muted animate-pulse rounded"></div>
+            </div>
+            <div className="h-2 bg-muted animate-pulse rounded"></div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+              <div className="h-4 w-12 bg-muted animate-pulse rounded"></div>
+            </div>
+            <div className="h-2 bg-muted animate-pulse rounded"></div>
+          </div>
+          <div className="space-y-2">
+            <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+            <div className="space-y-1">
+              <div className="h-4 w-full bg-muted animate-pulse rounded"></div>
+              <div className="h-4 w-3/4 bg-muted animate-pulse rounded"></div>
+              <div className="h-4 w-1/2 bg-muted animate-pulse rounded"></div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-const services = [
-  {
-    name: "frontend-service",
-    status: "Running",
-    replicas: "3/3",
-    cpu: 45,
-    memory: 60,
-  },
-  {
-    name: "backend-api",
-    status: "Running",
-    replicas: "2/2",
-    cpu: 65,
-    memory: 75,
-  },
-  {
-    name: "database",
-    status: "Warning",
-    replicas: "2/3",
-    cpu: 85,
-    memory: 90,
-  },
-];
+function LoadingSection() {
+  return (
+    <div className="space-y-4">
+      <LoadingCard />
+      <LoadingCard />
+    </div>
+  );
+}
+
+async function getClusterInfo() {
+  try {
+    const response = await fetch('http://localhost:3000/api/kubernetes/clusters', {
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('Failed to fetch cluster info');
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching cluster info:', error);
+    return { clusters: [] };
+  }
+}
+
+async function getServicesInfo(namespace: string) {
+  try {
+    const response = await fetch(`http://localhost:3000/api/kubernetes/services?namespace=${namespace}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('Failed to fetch services info');
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching services info:', error);
+    return { services: [] };
+  }
+}
 
 export default function Infrastructure() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Infrastructure Overview</h1>
-        <p className="text-muted-foreground mt-2">
-          Monitor your Kubernetes clusters and cloud resources
-        </p>
+  const [activeTab, setActiveTab] = useState<string>("overview");
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentNamespace, setCurrentNamespace] = useState<string>('default');
+  const [clusterInfo, setClusterInfo] = useState<any>(null);
+  const [servicesInfo, setServicesInfo] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [clusterData, servicesData] = await Promise.all([
+        getClusterInfo(),
+        getServicesInfo(currentNamespace)
+      ]);
+      setClusterInfo(clusterData);
+      setServicesInfo(servicesData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Initial data fetch
+    fetchData();
+
+    // Set up auto-refresh every 30 seconds
+    const intervalId = setInterval(fetchData, 30000);
+
+    // Cleanup on unmount
+    return () => clearInterval(intervalId);
+  }, [currentNamespace]);
+
+  const handleRefresh = () => {
+    fetchData();
+  };
+
+  const handleNamespaceChange = (namespace: string) => {
+    setCurrentNamespace(namespace);
+  };
+
+  if (error) {
+    return (
+      <div className="p-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-500">Error</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>{error}</p>
+            <Button onClick={handleRefresh} className="mt-4">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+    );
+  }
 
-      <Tabs defaultValue="clusters">
-        <TabsList>
-          <TabsTrigger value="clusters">Clusters</TabsTrigger>
-          <TabsTrigger value="services">Services</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="clusters" className="space-y-4">
-          {clusters.map((cluster) => (
-            <Card key={cluster.name}>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-xl">{cluster.name}</CardTitle>
-                  <Badge variant={cluster.status === "Healthy" ? "default" : "destructive"}>
-                    {cluster.status}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4">
-                  <div className="grid gap-2">
-                    <div className="flex justify-between text-sm">
-                      <span>CPU Usage</span>
-                      <span>{cluster.cpu}%</span>
-                    </div>
-                    <Progress value={cluster.cpu} />
-                  </div>
-                  <div className="grid gap-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Memory Usage</span>
-                      <span>{cluster.memory}%</span>
-                    </div>
-                    <Progress value={cluster.memory} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm text-muted-foreground">Pods</span>
-                      <span className="text-2xl font-bold">{cluster.pods}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm text-muted-foreground">Nodes</span>
-                      <span className="text-2xl font-bold">{cluster.nodes}</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
+  return (
+    <>
+      <div className="p-4 space-y-4">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Infrastructure</h1>
+          <div className="flex items-center gap-4">
+            <NamespaceSelector 
+              value={currentNamespace} 
+              onChange={handleNamespaceChange}
+            />
+            <Button onClick={handleRefresh} disabled={isLoading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
 
-        <TabsContent value="services" className="space-y-4">
-          {services.map((service) => (
-            <Card key={service.name}>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-xl">{service.name}</CardTitle>
-                  <div className="flex gap-2 items-center">
-                    <span className="text-sm text-muted-foreground">
-                      Replicas: {service.replicas}
-                    </span>
-                    <Badge variant={service.status === "Running" ? "default" : "destructive"}>
-                      {service.status}
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4">
-                  <div className="grid gap-2">
-                    <div className="flex justify-between text-sm">
-                      <span>CPU Usage</span>
-                      <span>{service.cpu}%</span>
-                    </div>
-                    <Progress value={service.cpu} />
-                  </div>
-                  <div className="grid gap-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Memory Usage</span>
-                      <span>{service.memory}%</span>
-                    </div>
-                    <Progress value={service.memory} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-      </Tabs>
-    </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="services">Services</TabsTrigger>
+            <TabsTrigger value="resources">Resources</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-4">
+            {isLoading ? (
+              <LoadingSection />
+            ) : (
+              <ClusterOverview data={clusterInfo} />
+            )}
+          </TabsContent>
+
+          <TabsContent value="services" className="space-y-4">
+            {isLoading ? (
+              <LoadingSection />
+            ) : (
+              <ServicesList data={servicesInfo} />
+            )}
+          </TabsContent>
+
+          <TabsContent value="resources" className="space-y-4">
+            <ResourceOverview namespace={currentNamespace} />
+          </TabsContent>
+        </Tabs>
+      </div>
+      <Toaster />
+    </>
   );
 } 
