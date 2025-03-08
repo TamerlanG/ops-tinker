@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🛠️ Tinker Ops
 
-## Getting Started
+Tinker Ops is an experimental DevOps playground designed for learning and experimenting with various DevOps practices and tools. It provides a beautiful, modern dashboard interface for monitoring infrastructure, managing deployments, and tracking DevOps metrics.
 
-First, run the development server:
+## 🚀 Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Infrastructure Monitoring**
+  - Kubernetes cluster health monitoring
+  - Service status and resource usage
+  - Real-time metrics visualization
+  - Cloud resource management
+
+- **Deployment Management**
+  - Deployment history and tracking
+  - Version control integration
+  - Rollback capabilities
+  - Deployment logs
+
+- **DevOps Metrics**
+  - DORA metrics tracking
+  - Performance indicators
+  - SLO monitoring
+  - Trend analysis
+
+## 🛠️ Tech Stack
+
+- **Frontend**
+  - Next.js 14
+  - TypeScript
+  - Tailwind CSS
+  - shadcn/ui components
+  - React Query
+
+## 🏗️ Getting Started
+
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd tinker-ops
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Run the development server**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open your browser**
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+## 🧪 Development
+
+The project is structured as follows:
+
+```
+src/
+├── app/                    # Next.js app directory
+│   ├── infrastructure/    # Infrastructure monitoring
+│   ├── deployments/      # Deployment management
+│   ├── metrics/         # DevOps metrics
+│   └── layout.tsx       # Root layout
+├── components/           # Reusable components
+└── lib/                 # Utilities and helpers
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🔧 Configuration
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Currently using mock data for demonstration. To connect with real services:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Set up your environment variables in `.env.local`
+2. Configure your cloud provider credentials
+3. Set up your monitoring stack (Prometheus, etc.)
+4. Configure your CI/CD integration
 
-## Learn More
+## 📚 Future Improvements
 
-To learn more about Next.js, take a look at the following resources:
+- [ ] Real-time data integration with Kubernetes API
+- [ ] Cloud provider (AWS/GCP/Azure) integration
+- [ ] CI/CD platform connections
+- [ ] Authentication and authorization
+- [ ] Custom metric collection
+- [ ] Alert management
+- [ ] Cost monitoring
+- [ ] Service dependency visualization
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🤝 Contributing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Contributions are welcome! Feel free to:
 
-## Deploy on Vercel
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 📝 License
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is licensed under the MIT License - see the LICENSE file for details.
