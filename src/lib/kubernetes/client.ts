@@ -2,55 +2,38 @@ import * as k8s from '@kubernetes/client-node';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { Stream } from 'stream';
 
 export class KubernetesClient {
   private static instance: KubernetesClient;
   private kc: k8s.KubeConfig;
   private coreV1Api: k8s.CoreV1Api;
   private appsV1Api: k8s.AppsV1Api;
+  private metricsApi: k8s.CustomObjectsApi;
   private configPath: string | null = null;
 
   private constructor() {
     this.kc = new k8s.KubeConfig();
     this.loadConfig();
-    
     this.coreV1Api = this.kc.makeApiClient(k8s.CoreV1Api);
     this.appsV1Api = this.kc.makeApiClient(k8s.AppsV1Api);
+    this.metricsApi = this.kc.makeApiClient(k8s.CustomObjectsApi);
   }
 
   private loadConfig() {
     try {
-      // Try loading from default locations
       this.kc.loadFromDefault();
+      console.log('Loaded Kubernetes config from default location');
     } catch (error) {
-      console.warn('Failed to load config from default location, trying KUBECONFIG');
+      console.warn('Failed to load Kubernetes config from default location:', error);
+      // Fallback to in-cluster config if available
       try {
-        // Try loading from KUBECONFIG environment variable
-        const kubeconfigPath = process.env.KUBECONFIG || `${process.env.HOME}/.kube/config`;
-        this.kc.loadFromFile(kubeconfigPath);
-        this.configPath = kubeconfigPath;
-      } catch (error) {
-        console.error('Failed to load Kubernetes configuration:', error);
-        throw new Error('Could not load Kubernetes configuration');
+        this.kc.loadFromCluster();
+        console.log('Loaded Kubernetes config from in-cluster');
+      } catch (clusterError) {
+        console.warn('Failed to load Kubernetes config from in-cluster:', clusterError);
       }
     }
-  }
-
-  public getConfigInfo() {
-    const currentContext = this.kc.getCurrentContext();
-    const contextObject = this.kc.getContextObject(currentContext);
-    return {
-      currentContext,
-      configPath: this.configPath,
-      contexts: this.kc.getContexts().map(ctx => ctx.name),
-      currentNamespace: contextObject?.namespace || 'default'
-    };
-  }
-
-  public getCurrentNamespace(): string {
-    const currentContext = this.kc.getCurrentContext();
-    const contextObject = this.kc.getContextObject(currentContext);
-    return contextObject?.namespace || 'default';
   }
 
   public static getInstance(): KubernetesClient {
@@ -58,6 +41,18 @@ export class KubernetesClient {
       KubernetesClient.instance = new KubernetesClient();
     }
     return KubernetesClient.instance;
+  }
+
+  public getConfigInfo() {
+    return {
+      currentContext: this.kc.getCurrentContext(),
+      currentNamespace: this.getCurrentNamespace(),
+      contexts: this.kc.getContexts().map(ctx => ctx.name),
+    };
+  }
+
+  public getCurrentNamespace(): string {
+    return this.kc.getContextObject(this.kc.getCurrentContext())?.namespace || 'default';
   }
 
   public async getNodes() {
@@ -74,9 +69,37 @@ export class KubernetesClient {
     }
   }
 
+  public async getNamespaces() {
+    try {
+      const response = await this.coreV1Api.listNamespace();
+      return response.items;
+    } catch (error: any) {
+      console.error('Error fetching namespaces:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to fetch namespaces. Make sure your cluster is accessible.'
+      );
+    }
+  }
+
+  public async getServices(namespace: string = 'default') {
+    try {
+      const response = await this.coreV1Api.listNamespacedService({ namespace });
+      return response.items;
+    } catch (error: any) {
+      console.error('Error fetching services:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to fetch services. Make sure your cluster is accessible.'
+      );
+    }
+  }
+
   public async getPods(namespace: string = 'default') {
     try {
-      const response = await this.coreV1Api.listNamespacedPod({ namespace});
+      const response = await this.coreV1Api.listNamespacedPod({ namespace });
       return response.items;
     } catch (error: any) {
       console.error('Error fetching pods:', error?.body || error);
@@ -102,20 +125,6 @@ export class KubernetesClient {
     }
   }
 
-  public async getServices(namespace: string = 'default') {
-    try {
-      const response = await this.coreV1Api.listNamespacedService({ namespace });
-      return response.items;
-    } catch (error: any) {
-      console.error('Error fetching services:', error?.body || error);
-      throw new Error(
-        error?.body?.message || 
-        error?.message || 
-        'Failed to fetch services. Make sure your cluster is accessible.'
-      );
-    }
-  }
-
   public async getConfigMaps(namespace: string = 'default') {
     try {
       const response = await this.coreV1Api.listNamespacedConfigMap({ namespace });
@@ -133,7 +142,7 @@ export class KubernetesClient {
   public async getSecrets(namespace: string = 'default') {
     try {
       const response = await this.coreV1Api.listNamespacedSecret({ namespace });
-      return response.items.map(secret => ({
+      return response.items.map((secret: k8s.V1Secret) => ({
         ...secret,
         data: Object.keys(secret.data || {}).reduce((acc, key) => {
           acc[key] = '[REDACTED]';
@@ -164,36 +173,164 @@ export class KubernetesClient {
     }
   }
 
-  public async getNamespaces() {
-    try {
-      const response = await this.coreV1Api.listNamespace();
-      return response.items;
-    } catch (error: any) {
-      console.error('Error fetching namespaces:', error?.body || error);
-      throw new Error(
-        error?.body?.message || 
-        error?.message || 
-        'Failed to fetch namespaces. Make sure your cluster is accessible.'
-      );
-    }
-  }
-
   public async getResourceMetrics(namespace: string = 'default') {
     try {
-      const metricsApi = this.kc.makeApiClient(k8s.CustomObjectsApi);
-      const { body } = await metricsApi.listNamespacedCustomObject(
-        'metrics.k8s.io',
-        'v1beta1',
+      const response = await this.metricsApi.listNamespacedCustomObject({
+        group: 'metrics.k8s.io',
+        version: 'v1beta1',
         namespace,
-        'pods'
-      );
-      return body;
+        plural: 'pods'
+      });
+      return response;
     } catch (error: any) {
       console.error('Error fetching metrics:', error?.body || error);
       throw new Error(
         error?.body?.message || 
         error?.message || 
         'Failed to fetch metrics. Make sure metrics-server is installed.'
+      );
+    }
+  }
+
+  public async getPodDetails(name: string, namespace: string = 'default') {
+    try {
+      const response = await this.coreV1Api.readNamespacedPod({name, namespace});
+      return response;
+    } catch (error: any) {
+      console.error('Error fetching pod details:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to fetch pod details. Make sure your cluster is accessible.'
+      );
+    }
+  }
+
+  public async getPodLogs(
+    namespace: string,
+    podName: string,
+    options: {
+      container?: string;
+      follow?: boolean;
+      tailLines?: number;
+      timestamps?: boolean;
+    } = {}
+  ): Promise<any> {
+    try {
+      const log = new k8s.Log(this.kc);
+      const logStream = new Stream.PassThrough();
+
+      const req = await log.log(namespace, podName, options.container || '', logStream, {
+        follow: options.follow || false,
+        tailLines: options.tailLines || 50,
+        pretty: false,
+        timestamps: options.timestamps || false,
+      });
+
+      return { logStream, req };
+    } catch (error: any) {
+      console.error('Error fetching pod logs:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to fetch pod logs. Make sure your cluster is accessible.'
+      );
+    }
+  }
+
+  public async execPodCommand(
+    namespace: string,
+    podName: string,
+    options: {
+      command: string[];
+      container?: string;
+      stdin?: boolean;
+      stdout?: boolean;
+      stderr?: boolean;
+      tty?: boolean;
+    }
+  ): Promise<any> {
+    try {
+      const exec = new k8s.Exec(this.kc);
+      const command = Array.isArray(options.command) ? options.command[0] : options.command;
+      return await exec.exec(
+        namespace,
+        podName,
+        command,
+        options.container || '',
+        options.stdin || false,
+        options.stdout || true,
+        options.stderr || true,
+        options.tty || false
+      );
+    } catch (error: any) {
+      console.error('Error executing command in pod:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to execute command in pod'
+      );
+    }
+  }
+
+  public async portForward(
+    namespace: string,
+    podName: string,
+    localPort: number,
+    remotePort: number
+  ): Promise<any> {
+    try {
+      const portForward = new k8s.PortForward(this.kc);
+      return await portForward.portForward(namespace, podName, [localPort], [remotePort], null, null);
+    } catch (error: any) {
+      console.error('Error setting up port forwarding:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to set up port forwarding'
+      );
+    }
+  }
+
+  public async deletePod(namespace: string, podName: string) {
+    try {
+      await this.coreV1Api.deleteNamespacedPod(podName, namespace, {});
+    } catch (error: any) {
+      console.error('Error deleting pod:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to delete pod'
+      );
+    }
+  }
+
+  public async restartPod(namespace: string, podName: string) {
+    try {
+      const timestamp = new Date().toISOString();
+      const pod = await this.coreV1Api.readNamespacedPod(podName, namespace, {});
+      
+      // Add or update annotation to trigger restart
+      const annotations = pod.metadata?.annotations || {};
+      annotations['kubectl.kubernetes.io/restartedAt'] = timestamp;
+      
+      const patch = {
+        metadata: {
+          annotations: annotations
+        }
+      };
+
+      await this.coreV1Api.patchNamespacedPod(podName, namespace, patch, undefined, {
+        headers: {
+          'Content-Type': 'application/strategic-merge-patch+json'
+        }
+      });
+    } catch (error: any) {
+      console.error('Error restarting pod:', error?.body || error);
+      throw new Error(
+        error?.body?.message || 
+        error?.message || 
+        'Failed to restart pod'
       );
     }
   }

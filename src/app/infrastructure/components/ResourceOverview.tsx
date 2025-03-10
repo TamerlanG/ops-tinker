@@ -8,12 +8,20 @@ import { Switch } from "@/components/ui/switch";
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import Link from "next/link";
 
 interface Resource {
   name: string;
   namespace: string;
   age: string;
+  status: string;
+  kind?: string;
   [key: string]: any;
+}
+
+interface Column {
+  label: string;
+  key: string;
 }
 
 interface Event {
@@ -33,6 +41,23 @@ interface Event {
 interface ResourceOverviewProps {
   namespace: string;
 }
+
+const getStatusVariant = (status: string): "default" | "destructive" | "secondary" | "outline" => {
+  switch (status?.toLowerCase()) {
+    case 'running':
+    case 'healthy':
+    case 'active':
+      return 'default';
+    case 'pending':
+      return 'secondary';
+    case 'failed':
+    case 'error':
+    case 'unhealthy':
+      return 'destructive';
+    default:
+      return 'secondary';
+  }
+};
 
 export function ResourceOverview({ namespace }: ResourceOverviewProps) {
   const [resources, setResources] = useState<any>(null);
@@ -88,13 +113,21 @@ export function ResourceOverview({ namespace }: ResourceOverviewProps) {
         <CardHeader>
           <div className="flex justify-between items-start">
             <div className="space-y-1 max-w-[70%]">
-              <CardTitle className="text-lg font-medium break-all">{item.name}</CardTitle>
+              {activeTab === 'pods' ? (
+                <Link href={`/infrastructure/${item.namespace}/pods/${item.name}`}>
+                  <CardTitle className="text-lg font-medium break-all hover:underline">
+                    {item.name}
+                  </CardTitle>
+                </Link>
+              ) : (
+                <CardTitle className="text-lg font-medium break-all">{item.name}</CardTitle>
+              )}
               <div className="text-sm text-muted-foreground">
                 Namespace: {item.namespace}
               </div>
             </div>
             {item.status && (
-              <Badge variant={item.status === 'Healthy' ? 'default' : 'destructive'}>
+              <Badge variant={item.status === 'Healthy' || item.status === 'Running' ? 'default' : 'secondary'}>
                 {item.status}
               </Badge>
             )}
@@ -108,13 +141,17 @@ export function ResourceOverview({ namespace }: ResourceOverviewProps) {
                 return (
                   <div key={label} className="space-y-2">
                     <div className="text-sm font-medium">{label}</div>
-                    <div className="flex flex-wrap gap-2">
-                      {Array.isArray(value) ? value.map((key) => (
-                        <Badge key={key} variant="outline" className="break-all max-w-full">
-                          {key}
-                        </Badge>
-                      )) : null}
-                    </div>
+                    {Array.isArray(value) && value.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {value.map((key) => (
+                          <Badge key={key} variant="outline" className="break-all max-w-full">
+                            {key}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No data keys</div>
+                    )}
                   </div>
                 );
               }
